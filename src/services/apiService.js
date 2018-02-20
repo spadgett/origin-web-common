@@ -241,19 +241,18 @@ angular.module('openshiftCommonServices')
     }
 
     resource = toResourceGroupVersion(resource);
-    var primaryResource = resource.primaryResource();
     var discoveredResource;
     // API info for resources in an API group, if the resource was not found during discovery return undefined
     if (resource.group) {
-      discoveredResource = _.get(APIS_CFG, ["groups", resource.group, "versions", resource.version, "resources", primaryResource]);
+      discoveredResource = _.get(APIS_CFG, ["groups", resource.group, "versions", resource.version, "resources", resource.resource]);
       if (!discoveredResource) {
         return undefined;
       }
       var hostPrefixObj = _.get(APIS_CFG, ["groups", resource.group, 'hostPrefix']) || APIS_CFG;
       return {
         resource: resource.resource,
-        group:    resource.group,
-        version:  resource.version,
+        group:    discoveredResource.parentGroup || resource.group,
+        version:  discoveredResource.parentVersion || resource.version,
         protocol: hostPrefixObj.protocol,
         hostPort: hostPrefixObj.hostPort,
         prefix:   hostPrefixObj.prefix,
@@ -267,7 +266,7 @@ angular.module('openshiftCommonServices')
     var api;
     for (var apiName in API_CFG) {
       api = API_CFG[apiName];
-      discoveredResource = _.get(api, ["resources", resource.version, primaryResource]);
+      discoveredResource = _.get(api, ["resources", resource.version, resource.resource]);
       if (!discoveredResource) {
         continue;
       }

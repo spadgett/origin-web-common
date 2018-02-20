@@ -112,7 +112,35 @@ hawtioPluginLoader.registerPreBootstrapTask(function(next) {
         };
         apisDeferredVersions.push($.get(baseURL + "/" + apiVersion.groupVersion)
           .done(function(data) {
-            group.versions[versionStr].resources =  _.keyBy(data.resources, 'name');
+            _.each(data.resources, function(resource) {
+              // The response can contain subresources from other groups and
+              // versions. Make sure we handle these. For example, the `apps/v1`
+              // group has a scale subresource from `autoscaling/v1`:
+              //
+              // {
+              //   "name": "deployments/scale",
+              //   "singularName": "",
+              //   "namespaced": true,
+              //   "group": "autoscaling",
+              //   "version": "v1",
+              //   "kind": "Scale",
+              //   "verbs": [
+              //     "get",
+              //     "patch",
+              //     "update"
+              //   ]
+              // }
+              var resourceGroup;
+              if (resource.group) {
+                resourceGroup = resource.group;
+                resource.parentGroup = group.name;
+                resource.parentVersion = versionStr;
+              } else {
+                resourceGroup = group.name;
+              }
+              var resourceVersion = resource.version || versionStr;
+              _.set(apis, [ resourceGroup, 'versions', resourceVersion, 'resources', resource.name ], resource);
+            });
           })
           .fail(function(data, textStatus, jqXHR) {
             API_DISCOVERY_ERRORS.push({
@@ -2485,19 +2513,18 @@ angular.module('openshiftCommonServices')
     }
 
     resource = toResourceGroupVersion(resource);
-    var primaryResource = resource.primaryResource();
     var discoveredResource;
     // API info for resources in an API group, if the resource was not found during discovery return undefined
     if (resource.group) {
-      discoveredResource = _.get(APIS_CFG, ["groups", resource.group, "versions", resource.version, "resources", primaryResource]);
+      discoveredResource = _.get(APIS_CFG, ["groups", resource.group, "versions", resource.version, "resources", resource.resource]);
       if (!discoveredResource) {
         return undefined;
       }
       var hostPrefixObj = _.get(APIS_CFG, ["groups", resource.group, 'hostPrefix']) || APIS_CFG;
       return {
         resource: resource.resource,
-        group:    resource.group,
-        version:  resource.version,
+        group:    discoveredResource.parentGroup || resource.group,
+        version:  discoveredResource.parentVersion || resource.version,
         protocol: hostPrefixObj.protocol,
         hostPort: hostPrefixObj.hostPort,
         prefix:   hostPrefixObj.prefix,
@@ -2511,7 +2538,7 @@ angular.module('openshiftCommonServices')
     var api;
     for (var apiName in API_CFG) {
       api = API_CFG[apiName];
-      discoveredResource = _.get(api, ["resources", resource.version, primaryResource]);
+      discoveredResource = _.get(api, ["resources", resource.version, resource.resource]);
       if (!discoveredResource) {
         continue;
       }

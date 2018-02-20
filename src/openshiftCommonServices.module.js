@@ -112,7 +112,35 @@ hawtioPluginLoader.registerPreBootstrapTask(function(next) {
         };
         apisDeferredVersions.push($.get(baseURL + "/" + apiVersion.groupVersion)
           .done(function(data) {
-            group.versions[versionStr].resources =  _.keyBy(data.resources, 'name');
+            _.each(data.resources, function(resource) {
+              // The response can contain subresources from other groups and
+              // versions. Make sure we handle these. For example, the `apps/v1`
+              // group has a scale subresource from `autoscaling/v1`:
+              //
+              // {
+              //   "name": "deployments/scale",
+              //   "singularName": "",
+              //   "namespaced": true,
+              //   "group": "autoscaling",
+              //   "version": "v1",
+              //   "kind": "Scale",
+              //   "verbs": [
+              //     "get",
+              //     "patch",
+              //     "update"
+              //   ]
+              // }
+              var resourceGroup;
+              if (resource.group) {
+                resourceGroup = resource.group;
+                resource.parentGroup = group.name;
+                resource.parentVersion = versionStr;
+              } else {
+                resourceGroup = group.name;
+              }
+              var resourceVersion = resource.version || versionStr;
+              _.set(apis, [ resourceGroup, 'versions', resourceVersion, 'resources', resource.name ], resource);
+            });
           })
           .fail(function(data, textStatus, jqXHR) {
             API_DISCOVERY_ERRORS.push({
